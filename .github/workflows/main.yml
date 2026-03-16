@@ -1,0 +1,113 @@
+name: Pipeline CI/CD TP CICD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+env:
+  BACKEND_IMAGE: tp-backend
+  FRONTEND_IMAGE: tp-frontend
+  REPO_URL: ghcr.io
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repos
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: install backend dependencies & test
+        run: |
+          cd backend
+          npm ci
+          npm test
+
+      - name: install frontend dependencies & test
+        run: |
+          cd frontend
+          npm ci
+          npm test
+
+  build:
+    name: build and push
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: checkout repos
+        uses: actions/checkout@v4
+
+      - name: set lower case actor name
+        run: echo "ACTOR=$(echo ${{ github.actor }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: build backend image
+        run: docker build -t $BACKEND_IMAGE ./backend
+
+      - name: build frontend image
+        run: docker build -t $FRONTEND_IMAGE ./frontend
+
+      - name: tag images on ghcr
+        run: |
+          docker tag $BACKEND_IMAGE $REPO_URL/${{ env.ACTOR }}/$BACKEND_IMAGE:latest
+          docker tag $FRONTEND_IMAGE $REPO_URL/${{ env.ACTOR }}/$FRONTEND_IMAGE:latest
+
+      - name: connexion GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REPO_URL }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.TOKENCICD }}
+
+      - name: push images to ghcr
+        run: |
+          docker push $REPO_URL/${{ env.ACTOR }}/$BACKEND_IMAGE:latest
+          docker push $REPO_URL/${{ env.ACTOR }}/$FRONTEND_IMAGE:latest
+
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: connect to AWS VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.KEY }}
+          port: ${{ secrets.PORT }}
+          envs: REPO_URL,BACKEND_IMAGE,FRONTEND_IMAGE
+          script: |
+            # Met le pseudo github en minuscule pour Docker
+            ACTOR=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
+            
+            # Connexion au registre GitHub Container Registry
+            echo ${{secrets.TOKENCICD}} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Arrete et supprime les anciens conteneurs s'ils existent
+            docker rm -f $BACKEND_IMAGE || true
+            docker rm -f $FRONTEND_IMAGE || true
+            
+            # Récupère les nouvelles images
+            docker pull $REPO_URL/$ACTOR/$BACKEND_IMAGE:latest
+            docker pull $REPO_URL/$ACTOR/$FRONTEND_IMAGE:latest
+            
+            # Création d'un réseau docker pour que le frontend et le backend communiquent (optionnel mais recommandé)
+            docker network create tp_network || true
+            
+            # Lancement du Backend
+            # Ici tu peux passer tes secrets RDS avec -e DB_HOST=${{ secrets.DB_HOST }} par exemple
+            docker run -d --name $BACKEND_IMAGE --network tp_network -p 3000:3000 $REPO_URL/$ACTOR/$BACKEND_IMAGE:latest
+            
+            # Lancement du Frontend
+            docker run -d --name $FRONTEND_IMAGE --network tp_network -p 80:80 $REPO_URL/$ACTOR/$FRONTEND_IMAGE:latest
+            
+            # Vérification simple
+            sleep 3
+            curl localhost:3000/api/hello

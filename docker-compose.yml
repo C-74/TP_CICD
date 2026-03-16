@@ -13,7 +13,7 @@ services:
       - DB_USER=${RDS_USERNAME}
       - DB_PASSWORD=${RDS_PASSWORD}
       - DB_NAME=${RDS_DB_NAME}
-      - DB_PORT=${RDS_PORT:-3306}
+      - DB_PORT=${RDS_PORT:-5432}
     restart: unless-stopped
 
   frontend:
