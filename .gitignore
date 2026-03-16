@@ -1,0 +1,24 @@
+# Lignes générales Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build Frontend (Vite/Vue)
+dist/
+dist-ssr/
+*.local
+
+# Fichiers d'environnement
+.env
+.env.local
+.env.*.local
+
+# Fichiers de log / OS
+logs/
+*.log
+.DS_Store
+Thumbs.db
+
+# Fichiers de test / Couverture
+coverage/
+.nyc_output/
