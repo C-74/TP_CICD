@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: tp_backend
+    ports:
+      - "3000:3000"
+    environment:
+      # Ces variables d'environnement viendront de ton EC2 ou de ta CI/CD
+      - PORT=3000
+      - DB_HOST=${RDS_HOSTNAME}
+      - DB_USER=${RDS_USERNAME}
+      - DB_PASSWORD=${RDS_PASSWORD}
+      - DB_NAME=${RDS_DB_NAME}
+      - DB_PORT=${RDS_PORT:-3306}
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: tp_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
